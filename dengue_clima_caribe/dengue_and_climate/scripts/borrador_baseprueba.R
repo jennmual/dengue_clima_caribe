@@ -1,0 +1,32 @@
+Datosdengueclimav <- read_csv("data/caribe_data/Datosdengueclimav.csv")
+Datosdenguecliman=Datosdengueclimav
+#DatosdengueclimaIDEAM <- read_csv("data/DatosdengueclimaIDEAM.csv")
+#Datosdengueclima=DatosdengueclimaIDEAM
+
+#DATOS IDEAM TODAS ESTACIONES
+Datosdenguecliman$TM_Barranquilla_todase<-Datosdengueclima$TM_Barranquilla
+Datosdenguecliman$TM_Cartagena_todase<-Datosdengueclima$TM_Cartagena
+Datosdenguecliman$TM_SantaMarta_todase<-Datosdengueclima$TM_SantaMarta
+
+Datosdenguecliman$PT_Barranquilla_todase<-Datosdengueclima$PT_Barranquilla
+Datosdenguecliman$PT_Cartagena_todase<-Datosdengueclima$PT_Cartagena
+Datosdenguecliman$PT_SantaMarta_todase<-Datosdengueclima$PT_SantaMarta
+
+Datosdenguecliman$HR_Barranquilla_todase<-Datosdengueclima$HR_Barranquilla
+Datosdenguecliman$HR_Cartagena_todase<-Datosdengueclima$HR_Cartagena
+Datosdenguecliman$HR_SantaMarta_todase<-Datosdengueclima$HR_SantaMarta
+
+#DATOS AEROPUERTO
+Datosdenguecliman$TM_Barranquilla_Flores<-Datosdengueclima$TM_Barranquilla_Flores
+Datosdenguecliman$TM_Cartagena_AerRafaelN<-Datosdengueclima$TM_Cartagena_AerRafaelN
+Datosdenguecliman$TM_SantaMarta_AerSimonB<-Datosdengueclima$TM_SantaMarta_AerSimonB
+
+Datosdenguecliman$PT_Barranquilla_Flores<-Datosdengueclima$PT_Barranquilla_Flores
+Datosdenguecliman$PT_Cartagena_AerRafaelN<-Datosdengueclima$PT_Cartagena_AerRafaelN
+Datosdenguecliman$PT_SantaMarta_AerSimonB<-Datosdengueclima$PT_SantaMarta_AerSimonB
+
+Datosdenguecliman$HR_Barranquilla_Flores<-Datosdengueclima$HR_Barranquilla_Flores
+Datosdenguecliman$HR_Cartagena_AerRafaelN<-Datosdengueclima$HR_Cartagena_AerRafaelN
+Datosdenguecliman$HR_SantaMarta_AerSimonB<-Datosdengueclima$HR_SantaMarta_AerSimonB
+
+saveRDS(Datosdenguecliman,"data/Datosdenguecliman2025.rds")

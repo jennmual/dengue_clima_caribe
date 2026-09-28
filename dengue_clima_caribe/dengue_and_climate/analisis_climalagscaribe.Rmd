@@ -1,0 +1,953 @@
+---
+title: "Analysis based on the Gasparrini article."
+author: "---"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  pdf_document:
+    toc: yes
+    latex_engine: xelatex
+  html_document:
+    theme: default
+    df_print: paged
+    toc: yes
+    toc_float: yes
+  word_document:
+    toc: yes
+subtitle: Case studies Barranquilla, Cartagena and Santa Marta
+mainfont: Arial
+urlcolor: blue
+editor_options:
+  chunk_output_type: console
+---
+
+```{r include=FALSE}
+################################################################################
+#   "The case time series design"
+#   December, 2024
+#
+# * This code is available at:
+#   https://github.com/AGORA-COL/dengue_clima_Caribe
+################################################################################
+```
+
+## Background
+
+Hablar de la tesis de Diego y los datos satelitales
+
+## Preparation
+
+```{r include=FALSE}
+################################################################################
+# Preparation
+################################################################################
+```
+
+The following packages are loaded in the session, and need to be installed to run the R code:
+
+```{r packages, message=FALSE}
+library(readr); library(dlnm) ; library(gnm) ; library(data.table) ; library(splines); 
+library(MASS);  library(ggcorrplot); library(dplyr); library(car);library(tidyr);
+library(lme4);  library(kableExtra)
+```
+
+
+```{r datos, warning = FALSE,}
+Datosdengueclima <- read_csv("data/caribe_data/Datosdengueclimav.csv")
+
+datos_dlnm=Datosdengueclima
+datos_dlnm <- datos_dlnm[datos_dlnm$Año >= 2009 & datos_dlnm$Año <= 2023, ]
+datos_dlnm$Fecha <- as.Date(paste(datos_dlnm$Año, datos_dlnm$Semana_Epidemiologica, 1, 
+                                  sep = "-"), 
+                            format = "%Y-%U-%u")
+```
+
+## Analysis
+
+### Barranquila
+
+```{r include=FALSE}
+################################################################################
+# Graphics
+################################################################################
+```
+
+The archive variables for each city during the study period are illustrated below:
+
+
+```{r grah_bql, out.width='100%', fig.dim=c(7,9), echo=FALSE}
+#graphics.off()
+par(mar=c(4,4,1,1), oma=c(0,0,4,0))
+layout(matrix(1:5, nrow=5, byrow=TRUE), heights=c(1.5,1.3,1.3,1.3,1.3))
+plot(Casos_Barranquilla~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=1, xlab="",
+     ylab="Cases")
+plot(BAQ_avg_temperature~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=2, xlab="",
+     ylab="Aver.tem.")
+plot(BAQ_avg_specific_humidity~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=4, xlab="Date",
+     ylab="Spec.hum.")
+plot(BAQ_avg_relative_humidity~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=3, xlab="Date",
+     ylab="Rel.hum.")
+plot(BAQ_total_precipitation~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=6, xlab="Date",
+     ylab="Total.prec.")
+
+mtext("Dengue cases and climate variables in Barranquilla", outer=TRUE, cex=1.2, line=2)
+par(mar=c(5,4,4,1)+0.1)
+```
+
+
+
+```{r include=FALSE}
+#==================================================================
+# Examinar correlaciones entre variables climáticas (sin desfase)
+#==================================================================
+cor_matrix_bql <- cor(datos_dlnm %>%
+                    select(BAQ_avg_temperature,
+                           BAQ_min_temperature,
+                           BAQ_max_temperature,
+                           BAQ_avg_relative_humidity,
+                           BAQ_avg_specific_humidity,
+                           BAQ_total_precipitation), 
+                  use = "complete.obs")
+
+```
+
+
+
+```{r grah_bql_cor, out.width='60%', fig.dim=c(7,6), fig.align='center', echo=FALSE}
+# Visualizar la matriz de correlación
+ggcorrplot(cor_matrix_bql, 
+           hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           title = "Correlations between climatic variables-Barranquilla",
+           ggtheme = ggplot2::theme_minimal() + 
+                   ggplot2::theme(plot.title = element_text(face = "bold")))
+```
+
+
+Now, with the function `crossbasis()` a time-distributed transformation is parameterised to study the relationship between environmental exposures (temperature, precipitation and humidity) and dengue cases. 
+
+```{r include=FALSE}
+################################################################################
+# Creation of cross-bases
+################################################################################
+```
+
+
+```{r include=FALSE}
+# Función
+obtener_aic_ns <- function(variables, datos, casos, df_max = 4) {
+  
+  resultados_aic <- data.frame(Variable = character(), df = integer(), AIC = numeric(), stringsAsFactors = FALSE)
+    for (variable in variables) {
+    for (df in 1:df_max) {
+      formula <- as.formula(paste(casos, "~ ns(", variable, ", df =", df, ")"))
+      modelo <- lm(formula, data = datos)
+      aic_val <- AIC(modelo)  # Calcular el AIC del modelo
+      resultados_aic <- rbind(resultados_aic, data.frame(Variable = variable, df = df, AIC = aic_val))
+    }
+  }
+    return(resultados_aic)
+}
+
+# Llamar a la función con las variables
+aic_tempave <- obtener_aic_ns("BAQ_avg_temperature", datos_dlnm, "Casos_Barranquilla")
+aic_tempmin <- obtener_aic_ns("BAQ_min_temperature", datos_dlnm, "Casos_Barranquilla")
+aic_tempmax <- obtener_aic_ns("BAQ_max_temperature", datos_dlnm, "Casos_Barranquilla")
+aic_humrel <- obtener_aic_ns("BAQ_avg_relative_humidity", datos_dlnm, "Casos_Barranquilla")
+aic_humesp <- obtener_aic_ns("BAQ_avg_specific_humidity", datos_dlnm, "Casos_Barranquilla")
+aic_prectot <- obtener_aic_ns("BAQ_total_precipitation", datos_dlnm, "Casos_Barranquilla")
+
+```
+
+
+```{r crossbasis_bqlla}
+cb_temp_ave_bql<- crossbasis(
+                  datos_dlnm$BAQ_avg_temperature, 
+                  lag = 24, # Up to 24 weeks lags
+                  argvar = list(fun = "ns", df = 3), # Non-linear relationship with temperature
+                  arglag = list(fun = "poly", degree = 2) # Non-linear relationship with lags
+                )
+
+cb_temp_max_bql<- crossbasis(
+                  datos_dlnm$BAQ_max_temperature, 
+                  lag = 24, 
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+
+cb_temp_min_bql<- crossbasis(
+                  datos_dlnm$BAQ_min_temperature, 
+                  lag = 24, 
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+
+cb_hum_rel_bql<- crossbasis(
+                  datos_dlnm$BAQ_avg_relative_humidity, 
+                  lag = 24,
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+
+cb_hum_esp_bql<- crossbasis(
+                  datos_dlnm$BAQ_avg_specific_humidity, 
+                  lag = 24,
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+
+cb_prec_tot_bql<- crossbasis(
+                  datos_dlnm$BAQ_total_precipitation, 
+                  lag = 24,
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+
+```
+
+
+Now, with all terms parameterised, a negative binomial regression is fitted excluding variables that were highly correlated, as follows:
+
+```{r model_bql}
+# Modelo bn0: Todas las 6 variables
+mod_bql_0 <- glm.nb(Casos_Barranquilla ~ cb_temp_ave_bql +
+                                         cb_temp_max_bql +
+                                         cb_temp_min_bql +
+                                         cb_hum_rel_bql  + 
+                                         cb_hum_esp_bql  +
+                                         cb_prec_tot_bql +
+                                         ns(Semana_Epidemiologica, df = 7) + # Seasonal adjustment 
+                                         factor(Año), # Trend by year
+                                       data=datos_dlnm)
+
+vif(mod_bql_0)
+
+# Modelo bn1: excluyendo temp.media y hum.especifica
+mod_bql_1 <- glm.nb(Casos_Barranquilla ~ cb_temp_max_bql +
+                                         cb_temp_min_bql +
+                                         cb_hum_rel_bql  + 
+                                         cb_prec_tot_bql+
+                                         ns(Semana_Epidemiologica, df = 7) +  
+                                         factor(Año), 
+                                      data=datos_dlnm)
+
+vif(mod_bql_1)
+
+
+# Modelo bn1: excluyendo temp.media, temp.minima y hum.especifica
+mod_bql_2 <- glm.nb(Casos_Barranquilla ~ cb_temp_max_bql +
+                                         cb_hum_rel_bql  + 
+                                         cb_prec_tot_bql +
+                                         ns(Semana_Epidemiologica, df = 7) + 
+                                         factor(Año), 
+                                      data=datos_dlnm)
+
+vif(mod_bql_2)
+
+
+# Modelo bn3: excluyendo todas las temp. y hum.especifica
+mod_bql_3 <- glm.nb(Casos_Barranquilla ~ cb_hum_rel_bql  + 
+                                         cb_prec_tot_bql +
+                                         ns(Semana_Epidemiologica, df = 7) + 
+                                         factor(Año), 
+                                      data=datos_dlnm)
+
+vif(mod_bql_3)
+
+# Modelo bn4: prec.total con interacción entre temp.media y hum.relativa
+mod_bql_4 <- glm.nb(Casos_Barranquilla ~ cb_temp_ave_bql +
+                                         cb_hum_rel_bql  + 
+                                         cb_prec_tot_bql +
+                                         cb_temp_ave_bql:cb_hum_rel_bql +
+                                         ns(Semana_Epidemiologica, df = 4) + 
+                                         factor(Año),
+                                      data=datos_dlnm)
+
+# Modelo bn5: iprec.total con interacción entre temp. max y hum.relativa
+mod_bql_5 <- glm.nb(Casos_Barranquilla ~ cb_temp_max_bql + 
+                                         cb_hum_rel_bql  + 
+                                         cb_prec_tot_bql +
+                                         cb_temp_max_bql:cb_hum_rel_bql, 
+                                       data = datos_dlnm)
+
+# Modelo bn6: SOLO con la interacción entre temp. max y hum.relativa
+mod_bql_6 <- glm.nb(Casos_Barranquilla ~ cb_temp_max_bql + 
+                                         cb_hum_rel_bql  + 
+                                         cb_temp_max_bql:cb_hum_rel_bql, 
+                                       data = datos_dlnm)
+
+
+pR2(mod_bql_0) #pR2: 0.216   AIC:5856      
+pR2(mod_bql_1) #pR2: 0.193   AIC:5986.8    
+pR2(mod_bql_2) #pR2: 0.181   AIC:6057.4    
+pR2(mod_bql_3) #pR2: 0.160   AIC:6195.4    
+pR2(mod_bql_4) #pR2: 0.261   AIC:5637.8  ** 
+pR2(mod_bql_5) #pR2: 0.163   AIC:6309.4  xx
+pR2(mod_bql_6) #pR2: 0.138   AIC:6473.1    
+
+
+layout(matrix(c(1,2,3,4,5,6), nrow = 2, byrow = TRUE))
+plot(residuals(mod_bql_0, type = "deviance"))
+plot(residuals(mod_bql_1, type = "deviance")) 
+plot(residuals(mod_bql_2, type = "deviance")) 
+plot(residuals(mod_bql_3, type = "deviance")) 
+plot(residuals(mod_bql_4, type = "deviance")) 
+plot(residuals(mod_bql_5, type = "deviance")) 
+plot(residuals(mod_bql_6, type = "deviance"))
+
+
+#### OTRO MODELO
+# library(pscl)
+# mod_bql_zinb <- zeroinfl(Casos_Barranquilla ~ cb_temp_ave_bql +
+#                                               cb_hum_rel_bql  + 
+#                                               cb_prec_tot_bql +
+#                                               cb_temp_ave_bql:cb_hum_rel_bql +
+#                                               ns(Semana_Epidemiologica, df = 7) + 
+#                                               factor(Año) | 1,                                                                  data = datos_dlnm, 
+#                                             dist = "negbin") 
+# 
+
+
+mod_bql=mod_bql_4
+```
+
+Now, with `crosspred()`, we take the results of the model (the coefficients) and evaluate how these variables are related to dengue risk in different scenarios:
+
+```{r crosspred_bql}
+cptmean <- crosspred(
+           basis = cb_temp_ave_bql, 
+           model = mod_bql,  
+           cen = mean(datos_dlnm$BAQ_avg_temperature, na.rm = TRUE), 
+           by = 1)
+names(coef(mod_bql))
+# Verificar la dimensión de la base cruzada
+dim(cb_temp_ave_bql)
+# Verificar los coeficientes del modelo
+length(coef(mod_bql))
+
+cphrh <- crosspred(
+         basis = cb_hum_rel_bql, 
+         model = mod_bql, 
+         cen = mean(datos_dlnm$BAQ_avg_relative_humidity, na.rm = TRUE),
+         by = 0.5)
+
+cpprecip <- crosspred(
+            basis = cb_prec_tot_bql, 
+            model = mod_bql, 
+            cen = mean(datos_dlnm$BAQ_total_precipitation, na.rm = TRUE),
+            by = 5 )
+
+```
+
+
+```{r include=FALSE}
+################################################################################
+# Associations with the coefficients of climatic variables
+################################################################################
+```
+
+With the above, the association in both dimensions of exposure intensity and delay is plotted. Specifically, the following graphs represent the exposure responses (interpreted as the net associations taking into account the whole lag period), the full two-dimensional exposure-delay responses for non-linear temperature, humidity, precipitation and the lag response.
+
+```{r plottempaver, out.width='100%', fig.dim=c(10,4), echo=-c(1,3,5,6)}
+
+par(oma = c(0, 0, 5, 0))
+layout(t(1:3))
+
+plot(cptmean, 
+     xlab="C°", 
+     zlab="RR", 
+     main="Temperature average",
+     phi = 30, theta = 230) 
+
+plot(cphrh, 
+     xlab = "%", 
+     zlab = "RR", 
+     main = "Relative humidity", 
+     phi = 30, theta = 230)
+
+plot(cpprecip, 
+     xlab = "PT", 
+     zlab = "RR", 
+     main = "Total precipitation", 
+     phi = 30, theta = 230)
+
+title(main = "Exposure-lag-response: Barranquilla", outer = TRUE)
+
+```
+
+
+
+
+### Cartagena
+
+```{r include=FALSE}
+################################################################################
+# Graphics Cartagena
+################################################################################
+```
+
+The archive variables for each city during the study period are illustrated below:
+
+
+```{r grah_ctg, out.width='100%', fig.dim=c(7,9), echo=FALSE}
+#graphics.off()
+par(mar=c(4,4,1,1), oma=c(0,0,4,0))
+layout(matrix(1:5, nrow=5, byrow=TRUE), heights=c(1.5,1.3,1.3,1.3,1.3))
+plot(Casos_Cartagena~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=1, xlab="",
+     ylab="Cases")
+plot(CTG_avg_temperature~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=2, xlab="",
+     ylab="Ave.temp.")
+plot(CTG_avg_specific_humidity~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=4, xlab="Date",
+     ylab="Spec.hum.")
+plot(CTG_avg_relative_humidity~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=3, xlab="Date",
+     ylab="Rel.hum.")
+plot(CTG_total_precipitation~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=6, xlab="Date",
+     ylab="Total.prec.")
+
+mtext("Dengue Cases and variables climate of Cartagena", outer=TRUE, cex=1.2, line=2)
+par(mar=c(5,4,4,1)+0.1)
+```
+
+
+```{r include=FALSE}
+#==================================================================
+# Examinar correlaciones entre variables climáticas (sin desfase)
+#==================================================================
+cor_matrix_ctg <- cor(datos_dlnm %>%
+                    select(CTG_avg_temperature,
+                           CTG_min_temperature,
+                           CTG_max_temperature,
+                           CTG_avg_relative_humidity,
+                           CTG_avg_specific_humidity,
+                           CTG_total_precipitation), 
+                  use = "complete.obs")
+
+```
+
+```{r grah_ctg_cor, out.width='60%', fig.dim=c(7,6), fig.align='center', echo=FALSE}
+ggcorrplot(cor_matrix_ctg, 
+           hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           title = "Correlations between climatic variables-Cartagena",
+           ggtheme = ggplot2::theme_minimal() + 
+                   ggplot2::theme(plot.title = element_text(face = "bold")))
+```
+
+
+```{r include=FALSE}
+################################################################################
+# Creation of cross-bases
+################################################################################
+```
+
+
+```{r include=FALSE}
+# Función
+obtener_aic_ns <- function(variables, datos, casos, df_max = 4) {
+  
+  resultados_aic <- data.frame(Variable = character(), df = integer(), AIC = numeric(), stringsAsFactors = FALSE)
+    for (variable in variables) {
+    for (df in 1:df_max) {
+      formula <- as.formula(paste(casos, "~ ns(", variable, ", df =", df, ")"))
+      modelo <- lm(formula, data = datos)
+      aic_val <- AIC(modelo)  # Calcular el AIC del modelo
+      resultados_aic <- rbind(resultados_aic, data.frame(Variable = variable, df = df, AIC = aic_val))
+    }
+  }
+    return(resultados_aic)
+}
+
+# Llamar a la función con las variables
+aic_tempave <- obtener_aic_ns("CTG_avg_temperature", datos_dlnm, "Casos_Cartagena")
+aic_tempmin <- obtener_aic_ns("CTG_min_temperature", datos_dlnm, "Casos_Cartagena")
+aic_tempmax <- obtener_aic_ns("CTG_max_temperature", datos_dlnm, "Casos_Cartagena")
+aic_humrel <- obtener_aic_ns("CTG_avg_relative_humidity", datos_dlnm, "Casos_Cartagena")
+aic_humesp <- obtener_aic_ns("CTG_avg_specific_humidity", datos_dlnm, "Casos_Cartagena")
+aic_prectot <- obtener_aic_ns("CTG_total_precipitation", datos_dlnm, "Casos_Cartagena")
+
+```
+
+
+```{r crossbasis_ctg}
+cb_temp_ave_ctg<- crossbasis(
+                  datos_dlnm$CTG_avg_temperature, 
+                  lag = 24, 
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2)
+                )
+
+cb_hum_rel_ctg<- crossbasis(
+                  datos_dlnm$CTG_avg_relative_humidity, 
+                  lag = 24,
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+
+cb_prec_tot_ctg<- crossbasis(
+                  datos_dlnm$CTG_total_precipitation, 
+                  lag = 24,
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+```
+
+Now, with all terms parameterised, a negative binomial regression is fitted as follows:
+
+```{r model_ctg}
+mod_ctg <- glm.nb(Casos_Cartagena ~ cb_temp_ave_ctg+
+                                       cb_hum_rel_ctg+
+                                       cb_prec_tot_ctg+
+                                        ns(Semana_Epidemiologica, df = 7) + 
+                                        factor(Año), 
+                                      data=datos_dlnm)
+vif(mod_ctg)
+
+# pR2(mod_ctg)
+# # Obtener residuos y valores ajustados
+# residuos <- residuals(mod_ctg)
+# fitted_values <- fitted(mod_ctg)
+# 
+# # Crear el gráfico usando ggplot2
+# ggplot(data = data.frame(fitted_values, residuos), aes(x = fitted_values, y = residuos)) +
+#   geom_point() +
+#   geom_hline(yintercept = 0, color = "red") +
+#   labs(x = "Valores ajustados", y = "Residuos", title = "Gráfico de Residuos")
+```
+
+
+```{r crosspred_ctg}
+cptmean_ctg <- crosspred(
+                basis = cb_temp_ave_ctg, 
+                model = mod_ctg,  
+                cen = mean(datos_dlnm$CTG_avg_temperature, na.rm = TRUE), 
+                by = 1)
+
+cphrh_ctg <- crosspred(
+              basis = cb_hum_rel_ctg, 
+              model =  mod_ctg, 
+              cen = mean(datos_dlnm$CTG_avg_relative_humidity, na.rm = TRUE),
+              by = 0.5)
+
+cpprecip_ctg <- crosspred(
+                 basis = cb_prec_tot_ctg, 
+                 model = mod_ctg, 
+                 cen = mean(datos_dlnm$CTG_total_precipitation, na.rm = TRUE),
+                 by = 5)
+
+```
+
+
+```{r include=FALSE}
+################################################################################
+# Associations with the coefficients of climatic variables
+################################################################################
+```
+
+
+```{r plottempaver_ctg, out.width='100%', fig.dim=c(10,4), echo=-c(1,3,5,6)}
+
+par(oma = c(0, 0, 5, 0))
+layout(t(1:3))
+
+plot(cptmean_ctg, 
+     xlab="C°", 
+     zlab="RR", 
+     main="Temperature average",
+     phi = 30, theta = 230) 
+
+plot(cphrh_ctg, 
+     xlab = "%", 
+     zlab = "RR", 
+     main = "Relative humidity", 
+     phi = 30, theta = 230)
+
+plot(cpprecip_ctg, 
+     xlab = "PT", 
+     zlab = "RR", 
+     main = "Total precipitation", 
+     phi = 30, theta = 230)
+
+title(main = "Exposure-lag-response: Cartagena", outer = TRUE)
+
+```
+
+
+
+
+
+### Santa Marta
+
+```{r include=FALSE}
+################################################################################
+# Graphics Santa Marta
+################################################################################
+```
+
+The archive variables for each city during the study period are illustrated below:
+
+
+```{r grah_stm, out.width='100%', fig.dim=c(7,9), echo=FALSE}
+#graphics.off()
+par(mar=c(4,4,1,1), oma=c(0,0,4,0))
+layout(matrix(1:5, nrow=5, byrow=TRUE), heights=c(1.5,1.3,1.3,1.3,1.3))
+plot(Casos_SantaMarta~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=1, xlab="",
+     ylab="Cases")
+plot(SMR_avg_temperature~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=2, xlab="",
+     ylab="Aver.temp.")
+plot(SMR_avg_specific_humidity~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=4, xlab="Date",
+     ylab="Spec.hum.")
+plot(SMR_avg_relative_humidity~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=3, xlab="Date",
+     ylab="Rel.hum.")
+plot(SMR_total_precipitation~Fecha, data=datos_dlnm, type="l", lty=1, bty="l", col=6, xlab="Date",
+     ylab="Total.prec.")
+
+mtext("Dengue cases and climate variables in Santa Marta", outer=TRUE, cex=1.2, line=2)
+par(mar=c(5,4,4,1)+0.1)
+```
+
+
+
+```{r include=FALSE}
+#==================================================================
+# Examinar correlaciones entre variables climáticas (sin desfase)
+#==================================================================
+cor_matrix_stm <- cor(datos_dlnm %>%
+                    select(SMR_avg_temperature,
+                           SMR_min_temperature,
+                           SMR_max_temperature,
+                           SMR_avg_relative_humidity,
+                           SMR_avg_specific_humidity,
+                           SMR_total_precipitation), 
+                  use = "complete.obs")
+
+```
+
+```{r grah_stm_cor, out.width='60%', fig.dim=c(7,6), fig.align='center', echo=FALSE}
+# Visualizar la matriz de correlación
+ggcorrplot(cor_matrix_stm, 
+           hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           title = "Correlations between climatic variables-Santa Marta",
+           ggtheme = ggplot2::theme_minimal() + 
+                   ggplot2::theme(plot.title = element_text(face = "bold")))
+```
+
+
+```{r include=FALSE}
+################################################################################
+# Creation of cross-bases
+################################################################################
+```
+
+
+```{r include=FALSE}
+# Función
+obtener_aic_ns <- function(variables, datos, casos, df_max = 4) {
+  
+  resultados_aic <- data.frame(Variable = character(), df = integer(), AIC = numeric(), stringsAsFactors = FALSE)
+    for (variable in variables) {
+    for (df in 1:df_max) {
+      formula <- as.formula(paste(casos, "~ ns(", variable, ", df =", df, ")"))
+      modelo <- lm(formula, data = datos)
+      aic_val <- AIC(modelo)  # Calcular el AIC del modelo
+      resultados_aic <- rbind(resultados_aic, data.frame(Variable = variable, df = df, AIC = aic_val))
+    }
+  }
+    return(resultados_aic)
+}
+
+# Llamar a la función con las variables
+aic_tempave <- obtener_aic_ns("CTG_avg_temperature", datos_dlnm, "Casos_Cartagena")
+aic_tempmin <- obtener_aic_ns("CTG_min_temperature", datos_dlnm, "Casos_Cartagena")
+aic_tempmax <- obtener_aic_ns("CTG_max_temperature", datos_dlnm, "Casos_Cartagena")
+aic_humrel <- obtener_aic_ns("CTG_avg_relative_humidity", datos_dlnm, "Casos_Cartagena")
+aic_humesp <- obtener_aic_ns("CTG_avg_specific_humidity", datos_dlnm, "Casos_Cartagena")
+aic_prectot <- obtener_aic_ns("CTG_total_precipitation", datos_dlnm, "Casos_Cartagena")
+
+```
+
+
+```{r crossbasis_stm}
+cb_temp_ave_stm<- crossbasis(
+                  datos_dlnm$SMR_avg_temperature, 
+                  lag = 24, 
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+
+cb_hum_rel_stm<- crossbasis(
+                  datos_dlnm$SMR_avg_relative_humidity, 
+                  lag = 24,
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+
+cb_prec_tot_stm<- crossbasis(
+                  datos_dlnm$SMR_total_precipitation, 
+                  lag = 24,
+                  argvar = list(fun = "ns", df = 3), 
+                  arglag = list(fun = "poly", degree = 2) 
+                )
+
+
+
+```
+
+Now, with all terms parameterised, a negative binomial regression is fitted as follows:
+
+```{r model_stm}
+mod_stm <- glm.nb(Casos_SantaMarta ~ cb_temp_ave_stm+
+                                       cb_hum_rel_stm+
+                                       cb_prec_tot_stm+
+                                        ns(Semana_Epidemiologica, df = 7) + 
+                                        factor(Año),          
+                                      data=datos_dlnm)
+vif(mod_stm)
+
+pR2(mod_stm)
+# Obtener residuos y valores ajustados
+residuos <- residuals(mod_stm)
+fitted_values <- fitted(mod_stm)
+
+# Crear el gráfico usando ggplot2
+ggplot(data = data.frame(fitted_values, residuos), aes(x = fitted_values, y = residuos)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red") +
+  labs(x = "Valores ajustados", y = "Residuos", title = "Gráfico de Residuos")
+```
+
+
+```{r crosspred__stm}
+cptmean_stm <- crosspred(
+                 basis = cb_temp_ave_stm, 
+                 model = mod_stm,  
+                 cen = mean(datos_dlnm$SMR_avg_temperature, na.rm = TRUE), 
+                 by = 0.1)
+
+cphrh_stm  <- crosspred(
+               basis = cb_hum_rel_stm, 
+               model = mod_stm,   
+               at = seq(70, 100, by = 1), 
+               cen = mean(datos_dlnm$SMR_avg_relative_humidity, na.rm = TRUE),
+               by = 0.5 )
+
+cpprecip_stm  <- crosspred(
+                  basis = cb_prec_tot_stm, 
+                  model = mod_stm,   
+                  cen = mean(datos_dlnm$SMR_total_precipitation, na.rm = TRUE),
+                  by = 5 )
+```
+
+
+```{r include=FALSE}
+################################################################################
+# Associations with the coefficients of climatic variables
+################################################################################
+```
+
+
+```{r plottempaver_stm, out.width='100%', fig.dim=c(10,4), echo=-c(1,3,5,6)}
+
+par(oma = c(0, 0, 5, 0))
+layout(t(1:3)) 
+
+plot(cptmean_stm, 
+     xlab="C°", 
+     zlab="RR", 
+     main="Temperature average",
+     phi = 30, theta = 230) 
+
+plot(cphrh_stm, 
+     xlab = "%", 
+     zlab = "RR", 
+     main = "Relative humidity", 
+     phi = 30, theta = 230)
+
+plot(cpprecip_stm, 
+     xlab = "PT", 
+     zlab = "RR", 
+     main = "Total precipitation", 
+     phi = 30, theta = 230)
+title(main = "Exposure-lag-response: Santa Marta", outer = TRUE)
+
+```
+
+
+
+### Todas las ciudades juntas
+
+For this, a base called ‘data_final’ was consolidated, where the variables were not separated by city, but the city was indicated in a new variable called ‘city’.
+
+```{r include=FALSE}
+data <- datos_dlnm
+data<-rename(data,BAQ_Casos=Casos_Barranquilla,CTG_Casos=Casos_Cartagena, SMR_Casos=Casos_SantaMarta)
+
+# Paso 1: Transformar los datos al formato largo
+data_long <- data %>%
+  # Seleccionar las columnas relevantes
+  select(Año, Semana_Epidemiologica,
+         BAQ_Casos, CTG_Casos, SMR_Casos,
+         BAQ_max_temperature, BAQ_min_temperature, BAQ_avg_temperature,
+         BAQ_avg_specific_humidity, BAQ_avg_relative_humidity, BAQ_total_precipitation,
+         CTG_max_temperature, CTG_min_temperature, CTG_avg_temperature,
+         CTG_avg_specific_humidity, CTG_avg_relative_humidity, CTG_total_precipitation,
+         SMR_max_temperature, SMR_min_temperature, SMR_avg_temperature,
+         SMR_avg_specific_humidity, SMR_avg_relative_humidity, SMR_total_precipitation) %>%
+  # Transformar las columnas de clima al formato largo
+  pivot_longer(
+    cols = c(BAQ_Casos, CTG_Casos, SMR_Casos,
+             BAQ_max_temperature, BAQ_min_temperature, BAQ_avg_temperature,
+             BAQ_avg_specific_humidity, BAQ_avg_relative_humidity, BAQ_total_precipitation,
+             CTG_max_temperature, CTG_min_temperature, CTG_avg_temperature,
+             CTG_avg_specific_humidity, CTG_avg_relative_humidity, CTG_total_precipitation,
+             SMR_max_temperature, SMR_min_temperature, SMR_avg_temperature,
+             SMR_avg_specific_humidity, SMR_avg_relative_humidity, SMR_total_precipitation), # Columnas seleccionadas
+    names_to = c("city", "variable"),  # Definir nuevos nombres de columna
+    names_pattern = "([^_]+)_(.*)"  # Dividir en "city" (antes del primer "_") y "variable" (después del primer "_")
+  )
+
+
+# Paso 2: Separar cada variable en columnas distintas
+data_wide <- data_long %>%
+  pivot_wider(names_from = "variable", values_from = "value")
+
+
+# Paso 3: Renombrar columnas para que coincidan con lo solicitado
+data_final <- data_wide %>%
+              rename(year = Año,
+                     week = Semana_Epidemiologica,
+                     dengue_cases = Casos,
+                     temp_max = max_temperature,
+                     temp_min = min_temperature,
+                     temp_mean = avg_temperature,
+                     humidity_mean_specific = avg_specific_humidity,
+                     humidity_mean_relative = avg_relative_humidity,
+                     precipitation = total_precipitation) %>%
+              # Convertir `city` en factor
+              mutate(city = factor(city))
+```
+
+
+```{r include=FALSE}
+#==================================================================
+# Examinar correlaciones entre variables climáticas (sin desfase)
+#==================================================================
+cor_matrix <- cor(data_final %>%
+                    select(temp_max, temp_min, temp_mean, 
+                           humidity_mean_relative, 
+                           humidity_mean_specific, 
+                           precipitation), 
+                  use = "complete.obs")
+print(cor_matrix)
+```
+
+```{r grah_todas_cor, out.width='60%', fig.dim=c(7,6), fig.align='center', echo=FALSE}
+# Visualizar la matriz de correlación
+library(ggcorrplot)
+ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower", lab = TRUE)
+```
+
+```{r crossbasis_todas}
+cb_temp_mean <- crossbasis(data_final$temp_mean, 
+                           lag = 24,
+                           argvar = list(fun = "ns", df = 3),  
+                           arglag = list(fun = "poly", degree = 2)   
+                           )
+
+cb_humidity_relative <- crossbasis(data_final$humidity_mean_relative, 
+                                   lag = 24,
+                                   argvar = list(fun = "ns", df = 3),
+                                   arglag = list(fun = "poly", degree = 2)
+                                   )
+
+cb_precip <- crossbasis(data_final$precipitation, 
+                        lag = 24,
+                        argvar = list(fun = "ns", df = 3),
+                        arglag = list(fun = "poly", degree = 2)
+                        )
+```
+
+
+```{r model_todas}
+model_bineg_1 <- glm.nb(dengue_cases ~ cb_temp_mean + 
+                                        cb_humidity_relative + 
+                                        cb_precip +
+                                        ns(week, df = 7) + 
+                                        factor(year) + 
+                                        factor(city), 
+                        data = data_final)
+
+vif(model_bineg_1)
+pR2(model_bineg_1)
+# Obtener residuos y valores ajustados
+residuos <- residuals(model_bineg_1)
+fitted_values <- fitted(model_bineg_1)
+
+# Crear el gráfico usando ggplot2
+ggplot(data = data.frame(fitted_values, residuos), aes(x = fitted_values, y = residuos)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red") +
+  labs(x = "Valores ajustados", y = "Residuos", title = "Gráfico de Residuos")
+```
+
+
+```{r crosspred__todas}
+pred_temp_media <- crosspred(
+                    basis = cb_temp_mean,     
+                    model = model_bineg_1,            
+                    cen = mean(data_final$temp_mean, na.rm = TRUE),  
+                    by = 1                  
+                  )
+
+pred_humidity_mean_relative <- crosspred(
+                              basis = cb_humidity_relative,      
+                              model = model_bineg_1,           
+                              cen = mean(data_final$humidity_mean_relative, na.rm = TRUE), 
+                              by = 0.5              
+                            )
+
+pred_precipitation <- crosspred(
+                      basis = cb_precip,      
+                      model = model_bineg_1,           
+                      cen = mean(data_final$precipitation, na.rm = TRUE),  
+                      by = 5                 
+                    )
+
+```
+
+
+```{r include=FALSE}
+################################################################################
+# Associations with the coefficients of climatic variables
+################################################################################
+```
+
+
+```{r plottempaver_todas, out.width='100%', fig.dim=c(10,4), echo=-c(1,3,5,6)}
+par(oma = c(0, 0, 5, 0))  
+layout(t(1:3)) 
+plot(pred_temp_media, 
+     xlab="C°", 
+     zlab="RR", 
+     main="Temperature average",
+     phi = 30, theta = 230) 
+
+plot(pred_humidity_mean_relative, 
+     xlab = "%", 
+     zlab = "RR", 
+     main = "Relative humidity", 
+     phi = 30, theta = 230)
+
+plot(pred_precipitation, 
+     xlab = "PT", 
+     zlab = "RR", 
+     main = "Total precipitation", 
+     phi = 30, theta = 230)
+
+title(main = "#Exposure-lag-response", outer = TRUE)
+```
+
+
+## References

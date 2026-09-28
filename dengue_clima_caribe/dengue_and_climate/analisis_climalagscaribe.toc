@@ -1,0 +1,8 @@
+\contentsline {subsection}{Background}{1}{section*.2}%
+\contentsline {subsection}{Preparation}{1}{section*.3}%
+\contentsline {subsection}{Analysis}{1}{section*.4}%
+\contentsline {subsubsection}{Barranquila}{1}{section*.5}%
+\contentsline {subsubsection}{Cartagena}{5}{section*.6}%
+\contentsline {subsubsection}{Santa Marta}{9}{section*.7}%
+\contentsline {subsubsection}{Todas las ciudades juntas}{13}{section*.8}%
+\contentsline {subsection}{References}{15}{section*.9}%
